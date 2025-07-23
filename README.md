@@ -123,6 +123,8 @@ curl http://localhost/health
   - API access enabled
   - GPT-4 deployment (for chat)
   - Text-embedding-3-large deployment (for embeddings)
+  - 
+<img width="1259" height="1287" alt="image" src="https://github.com/user-attachments/assets/841819ee-7dd0-47db-8584-43ea8efd1bea" />
 
 ## 📦 Installation Guide
 
