@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y gcc g++ netcat-traditional && rm -rf /v
 # Copy and install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install poetry
+RUN pip install pytest pytest-cov pytest-asyncio
 
 # Copy application code
 COPY src/ ./src/
