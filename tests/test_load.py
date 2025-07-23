@@ -11,7 +11,7 @@ from datetime import datetime
 import random
 
 # Import test scenarios
-from .test_prompts import TestPrompts
+from test_prompts import TestPrompts
 
 
 @dataclass
