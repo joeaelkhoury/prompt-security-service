@@ -699,6 +699,9 @@ pytest -v
 pytest --cov=src --cov-report=html
 # Open htmlcov/index.html to view coverage report
 
+#Run test core security
+pytest tests/test_core_security.py
+
 # Run security tests
 python tests/test_load.py security
 
