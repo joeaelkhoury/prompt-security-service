@@ -657,7 +657,7 @@ Key metrics exposed at `/metrics`:
 docker-compose exec streamlit pytest
 
 # Run specific test category
-docker-compose exec streamlit python tests/test_load.py security
+docker-compose exec streamlit python -m tests.test_load security
 
 # Run with coverage
 docker-compose exec streamlit pytest --cov=src tests/
