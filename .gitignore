@@ -49,3 +49,5 @@ alembic/versions/*.pyc
 
 # Do NOT ignore docker-composev0.yml (always track this file)
 !docker-composev0.yml
+docker-composev0.yml
+.gitignore
