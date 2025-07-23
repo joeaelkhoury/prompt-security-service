@@ -226,7 +226,7 @@ AZURE_OPENAI_API_KEY=your-key-here
 AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
 AZURE_OPENAI_API_VERSION=2024-02-15-preview
 AZURE_OPENAI_CHAT_DEPLOYMENT_NAME=gpt-4o
-AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME=text-embedding-ada-002
+AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME=text-embedding-3-large
 
 # Optional Settings (defaults provided)
 DATABASE_URL=postgresql://user:password@postgres:5432/prompt_security
