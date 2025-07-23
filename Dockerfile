@@ -17,6 +17,7 @@ COPY src/ ./src/
 COPY alembic/ ./alembic/
 COPY alembic.ini ./
 COPY frontend.py ./
+COPY tests/ ./tests/
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
