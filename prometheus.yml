@@ -1,0 +1,19 @@
+# prometheus.yml
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+rule_files: []
+
+scrape_configs:
+  # Scrape configuration for your application instances
+  - job_name: 'prompt-security'
+    static_configs:
+      - targets: ['app1:8000', 'app2:8000', 'app3:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
