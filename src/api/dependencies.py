@@ -1,4 +1,3 @@
-# src/api/dependencies.py
 """Dependency injection for API - Fixed for in-memory storage."""
 import threading
 import os
@@ -10,7 +9,7 @@ from src.infrastructure.repositories.graph import NetworkXGraphRepository
 from src.infrastructure.llm.factory import LLMServiceFactory
 from src.application.services.sanitization.strategies import (
     SQLInjectionSanitizer, XSSSanitizer, ProfanitySanitizer,
-    LengthLimitSanitizer, URLSanitizer, PersonalInfoSanitizer
+    LengthLimitSanitizer, URLSanitizer, PersonalInfoSanitizer,DataExfiltrationSanitizer, PromptInjectionSanitizer
 )
 from src.application.services.sanitization.sanitizer import CompositeSanitizer
 from src.application.services.similarity.strategies import (
@@ -115,23 +114,58 @@ class ServiceContainer:
             self.initialized = True
     
     def _create_input_sanitizer(self) -> CompositeSanitizer:
-        """Create input sanitizer with all strategies."""
+        """
+        Create comprehensive input sanitizer with all security strategies.
+        
+        Returns:
+            CompositeSanitizer configured with all security detection strategies
+        """
         strategies = [
+            # SQL injection detection (both direct and natural language)
             SQLInjectionSanitizer(),
+            
+            # Cross-site scripting prevention
             XSSSanitizer(),
+            
+            # Data theft and exfiltration detection
+            DataExfiltrationSanitizer(),
+            
+            # Prompt injection and jailbreak attempts
+            PromptInjectionSanitizer(),
+            
+            # Personal information protection
+            PersonalInfoSanitizer(),
+            
+            # Malicious URL detection
+            URLSanitizer(),
+            
+            # Content filtering
             ProfanitySanitizer(),
+            
+            # Length limits for resource protection
             LengthLimitSanitizer(max_length=self.settings.max_prompt_length),
-            URLSanitizer()
         ]
+        
         return CompositeSanitizer(strategies)
-    
+
     def _create_output_sanitizer(self) -> CompositeSanitizer:
-        """Create output sanitizer with appropriate strategies."""
+        """
+        Create output sanitizer for response cleaning.
+        
+        Returns:
+            CompositeSanitizer configured for output sanitization
+        """
         strategies = [
-            ProfanitySanitizer(),
+            # Remove any injected scripts from responses
             XSSSanitizer(),
-            PersonalInfoSanitizer()
+            
+            # Filter inappropriate content
+            ProfanitySanitizer(),
+            
+            # Protect personal information in responses
+            PersonalInfoSanitizer(),
         ]
+        
         return CompositeSanitizer(strategies)
     
     def _create_similarity_calculator(self) -> SimilarityCalculator:
