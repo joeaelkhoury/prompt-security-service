@@ -5,6 +5,7 @@ import asyncio
 import aiohttp
 import time
 import json
+import os
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime
@@ -37,11 +38,45 @@ class TestResult:
 class LoadTester:
     """Modular load testing framework."""
     
-    def __init__(self, base_url: str = "http://localhost:8000"):
-        self.base_url = base_url
+    def __init__(self, base_url: str = None):
+        # Check environment variable first, then try to auto-detect
+        if base_url:
+            self.base_url = base_url
+        else:
+            self.base_url = self._detect_base_url()
+        
         self.results: List[TestResult] = []
         self.start_time = None
         self.end_time = None
+    
+    def _detect_base_url(self) -> str:
+        """Auto-detect the correct base URL."""
+        import requests
+        
+        # Try common endpoints in order
+        endpoints = [
+            "http://localhost",        # Docker with Nginx
+            "http://localhost:80",     # Explicit port 80
+            "http://localhost:8000",   # Direct API
+            "http://127.0.0.1",       # Alternative localhost
+            "http://host.docker.internal:8000",  # From inside Docker
+        ]
+        
+        # Check environment variable
+        if os.getenv("API_BASE"):
+            endpoints.insert(0, os.getenv("API_BASE"))
+        
+        for endpoint in endpoints:
+            try:
+                resp = requests.get(f"{endpoint}/health", timeout=2)
+                if resp.status_code == 200:
+                    print(f"✅ Found service at: {endpoint}")
+                    return endpoint
+            except:
+                continue
+        
+        # Default fallback
+        return "http://localhost"
     
     async def execute_test(
         self, 
@@ -287,19 +322,31 @@ async def main():
     """Main test execution."""
     import sys
     
+    # Create tester instance (will auto-detect base URL)
+    tester = LoadTester()
+    
     # Check service health
     print("🏥 Checking service health...")
     try:
         import requests
-        resp = requests.get("http://localhost:8000/health", timeout=3)
+        resp = requests.get(f"{tester.base_url}/health", timeout=3)
         if resp.status_code == 200:
-            print("✅ Service is healthy\n")
+            print("✅ Service is healthy")
+            print(f"📍 Using endpoint: {tester.base_url}\n")
         else:
-            print("❌ Service returned non-200 status")
+            print(f"❌ Service returned non-200 status: {resp.status_code}")
             sys.exit(1)
     except Exception as e:
         print(f"❌ Cannot connect to service: {e}")
-        print("   Run: python -m src.main")
+        print("\n🔧 Troubleshooting:")
+        print("   1. Make sure Docker services are running:")
+        print("      docker-compose up -d")
+        print("   2. Wait for services to be ready:")
+        print("      docker-compose ps")
+        print("   3. Check if the service is accessible:")
+        print("      curl http://localhost/health")
+        print("\n   If running locally without Docker:")
+        print("      python -m src.main")
         sys.exit(1)
     
     # Parse command line arguments
@@ -307,18 +354,14 @@ async def main():
         mode = sys.argv[1]
         
         if mode == "security":
-            tester = LoadTester()
             await tester.run_security_tests()
         elif mode == "similarity":
-            tester = LoadTester()
             await tester.run_similarity_tests()
         elif mode == "stress":
-            tester = LoadTester()
             requests = int(sys.argv[2]) if len(sys.argv) > 2 else 100
             concurrent = int(sys.argv[3]) if len(sys.argv) > 3 else 10
             await tester.run_stress_test(requests, concurrent)
         elif mode == "all":
-            tester = LoadTester()
             await tester.run_security_tests()
             await tester.run_similarity_tests()
             await tester.run_stress_test(50, 5)
@@ -327,7 +370,6 @@ async def main():
             print_usage()
     else:
         # Default: run security tests
-        tester = LoadTester()
         await tester.run_security_tests()
 
 
@@ -344,6 +386,8 @@ def print_usage():
     print("  python tests/test_load.py security")
     print("  python tests/test_load.py stress 200 20")
     print("  python tests/test_load.py all")
+    print("\nEnvironment Variables:")
+    print("  API_BASE    - Override API endpoint (e.g., http://localhost)")
 
 
 if __name__ == "__main__":
