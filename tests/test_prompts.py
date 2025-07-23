@@ -1,5 +1,4 @@
-# tests/test_prompts.py
-"""Sophisticated test prompts based on P2SQL injection research."""
+"""Test prompts based on P2SQL injection research."""
 
 from typing import Dict, List, Any
 
