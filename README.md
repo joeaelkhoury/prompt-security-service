@@ -59,16 +59,16 @@ The Prompt Security Service is a comprehensive security solution that protects A
   - Clean architecture layers
   - Microservice ready
 
-## 🏗️ Architecture
+## 🏗️ Sequence
 
 <div align="center">
-  <img src="./diagrams/architecture-overview.png" alt="Architecture Overview" width="800">
+  <img src="./diagrams/sequence.jpeg" alt="Sequence Overview" width="800">
 </div>
 
 <details>
-<summary>Click to expand architecture diagram</summary>
+<summary>Click to expand sequence diagram</summary>
 
-![Detailed Architecture](./diagrams/architecture-detailed.png)
+![Detailed Sequence](./diagrams/sequence.jpeg)
 
 </details>
 
