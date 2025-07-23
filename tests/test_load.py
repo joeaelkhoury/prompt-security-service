@@ -1,5 +1,4 @@
 # tests/test_load.py
-"""Modular load testing framework with sophisticated attack scenarios."""
 
 import asyncio
 import aiohttp
@@ -36,7 +35,7 @@ class TestResult:
 
 
 class LoadTester:
-    """Modular load testing framework."""
+    """Load testing framework."""
     
     def __init__(self, base_url: str = None):
         # Check environment variable first, then try to auto-detect
@@ -106,16 +105,41 @@ class LoadTester:
                 data = await response.json()
                 duration = time.time() - start
                 
-                # Analyze response to determine if attack was blocked
+                # FIXED LOGIC: Analyze response to determine if attack was actually blocked
                 explanation = data.get("explanation", "").lower()
-                actually_blocked = any([
-                    "blocked" in explanation,
-                    "security" in explanation,
-                    "sql injection" in explanation,
-                    "xss" in explanation,
-                    "safety issues" in explanation,
-                    data.get("llm_response") is None and test_case.get("expected_blocked", False)
-                ])
+                
+                # Check for specific indicators of success vs blocking
+                if "no security issues detected" in explanation:
+                    # This means the request was successful, not blocked
+                    actually_blocked = False
+                elif data.get("llm_response") is None and test_case.get("expected_blocked", False):
+                    # No LLM response when we expected blocking = correctly blocked
+                    actually_blocked = True
+                else:
+                    # Look for specific blocking indicators
+                    actually_blocked = any([
+                        "has been blocked" in explanation,
+                        "blocked due to" in explanation,
+                        "agents recommended blocking" in explanation,
+                        "security issues detected:" in explanation,  # Note the colon
+                        "sql injection detected" in explanation,
+                        "xss attack detected" in explanation,
+                        "prompt injection detected" in explanation,
+                        "data exfiltration detected" in explanation,
+                        # Check if multiple agents voted to block
+                        any(
+                            agent.get('recommendation') == 'block' 
+                            for agent in data.get('agent_findings', [])
+                        ),
+                        # No LLM response for non-attack queries indicates blocking
+                        (data.get("llm_response") is None and not test_case.get("expected_blocked", False))
+                    ])
+                
+                # Additional validation: if success=True and llm_response exists, it's not blocked
+                if data.get("success", False) and data.get("llm_response") is not None:
+                    # Unless there's explicit blocking language
+                    if not any(phrase in explanation for phrase in ["blocked", "detected", "malicious"]):
+                        actually_blocked = False
                 
                 return TestResult(
                     test_name=test_case["name"],
@@ -207,7 +231,8 @@ class LoadTester:
                     
                     print(f"  {metric.capitalize()} Score: {score:.3f} (threshold: {threshold})")
                     print(f"  Is Similar: {score >= threshold}")
-                    print(f"  Blocked: {result.actually_blocked}\n")
+                    print(f"  Blocked: {result.actually_blocked}")
+                    print(f"  Explanation: {result.explanation[:100]}...\n")
     
     async def run_stress_test(self, total_requests: int = 100, concurrent: int = 10):
         """Run stress test with mixed workload."""
@@ -250,15 +275,31 @@ class LoadTester:
         successful = [r for r in results if r.success]
         blocked = [r for r in successful if r.actually_blocked]
         attacks_in_workload = sum(1 for t in workload if t.get("expected_blocked", False))
+        legitimate_in_workload = len(workload) - attacks_in_workload
+        
+        # Calculate accurate metrics
+        true_positives = sum(1 for r in successful if r.expected_blocked and r.actually_blocked)
+        false_positives = sum(1 for r in successful if not r.expected_blocked and r.actually_blocked)
+        true_negatives = sum(1 for r in successful if not r.expected_blocked and not r.actually_blocked)
+        false_negatives = sum(1 for r in successful if r.expected_blocked and not r.actually_blocked)
         
         print(f"\n📊 Stress Test Results:")
         print(f"  Total Time: {total_time:.2f}s")
         print(f"  Throughput: {len(successful)/total_time:.2f} req/s")
         print(f"  Success Rate: {len(successful)/len(results)*100:.1f}%")
-        print(f"  Attacks in Workload: {attacks_in_workload}")
-        print(f"  Attacks Blocked: {len(blocked)}")
-        print(f"  False Positives: {sum(1 for r in blocked if not r.expected_blocked)}")
-        print(f"  False Negatives: {sum(1 for r in successful if r.expected_blocked and not r.actually_blocked)}")
+        print(f"\n  Workload Composition:")
+        print(f"    Attacks: {attacks_in_workload}")
+        print(f"    Legitimate: {legitimate_in_workload}")
+        print(f"\n  Detection Results:")
+        print(f"    True Positives (attacks blocked): {true_positives}")
+        print(f"    True Negatives (legitimate allowed): {true_negatives}")
+        print(f"    False Positives (legitimate blocked): {false_positives}")
+        print(f"    False Negatives (attacks allowed): {false_negatives}")
+        
+        if attacks_in_workload > 0:
+            print(f"\n  Detection Rate: {true_positives/attacks_in_workload*100:.1f}%")
+        if legitimate_in_workload > 0:
+            print(f"  False Positive Rate: {false_positives/legitimate_in_workload*100:.1f}%")
     
     def _print_security_report(self):
         """Print comprehensive security test report."""
@@ -276,7 +317,7 @@ class LoadTester:
         
         # Print category summaries
         print("\nResults by Attack Category:")
-        for category, results in categories.items():
+        for category, results in sorted(categories.items()):
             total = len(results)
             passed = sum(1 for r in results if r.test_passed)
             blocked = sum(1 for r in results if r.actually_blocked)
@@ -284,26 +325,56 @@ class LoadTester:
             print(f"\n{category.replace('_', ' ').title()}:")
             print(f"  Total Tests: {total}")
             print(f"  Tests Passed: {passed}/{total} ({passed/total*100:.1f}%)")
-            print(f"  Attacks Blocked: {blocked}")
             
-            # Show failed tests
+            # Separate attack vs legitimate stats
+            attacks = [r for r in results if r.expected_blocked]
+            legitimate = [r for r in results if not r.expected_blocked]
+            
+            if attacks:
+                attacks_blocked = sum(1 for r in attacks if r.actually_blocked)
+                print(f"  Attacks Blocked: {attacks_blocked}/{len(attacks)} ({attacks_blocked/len(attacks)*100:.1f}%)")
+            
+            if legitimate:
+                legitimate_allowed = sum(1 for r in legitimate if not r.actually_blocked)
+                print(f"  Legitimate Allowed: {legitimate_allowed}/{len(legitimate)} ({legitimate_allowed/len(legitimate)*100:.1f}%)")
+            
+            # Show failed tests with more detail
             failed = [r for r in results if not r.test_passed]
             if failed:
                 print(f"  Failed Tests:")
-                for f in failed[:3]:  # Show first 3
-                    print(f"    - {f.test_name}: Expected block={f.expected_blocked}, Got={f.actually_blocked}")
+                for f in failed[:5]:  # Show first 5
+                    print(f"    - {f.test_name}:")
+                    print(f"      Expected: {'Block' if f.expected_blocked else 'Allow'}")
+                    print(f"      Got: {'Blocked' if f.actually_blocked else 'Allowed'}")
+                    if f.explanation:
+                        print(f"      Reason: {f.explanation[:80]}...")
         
         # Overall statistics
         total_tests = len(self.results)
         total_passed = sum(1 for r in self.results if r.test_passed)
-        attacks = [r for r in self.results if r.expected_blocked]
-        attacks_blocked = sum(1 for r in attacks if r.actually_blocked)
+        
+        # Separate attacks and legitimate queries
+        all_attacks = [r for r in self.results if r.expected_blocked]
+        all_legitimate = [r for r in self.results if not r.expected_blocked]
+        
+        attacks_blocked = sum(1 for r in all_attacks if r.actually_blocked)
+        legitimate_allowed = sum(1 for r in all_legitimate if not r.actually_blocked)
         
         print(f"\n📈 Overall Statistics:")
         print(f"  Total Tests: {total_tests}")
         print(f"  Tests Passed: {total_passed}/{total_tests} ({total_passed/total_tests*100:.1f}%)")
-        print(f"  Attack Detection Rate: {attacks_blocked}/{len(attacks)} ({attacks_blocked/len(attacks)*100:.1f}%)")
-        print(f"  Total Execution Time: {self.end_time - self.start_time:.2f}s")
+        
+        if all_attacks:
+            print(f"\n  Attack Detection:")
+            print(f"    Total Attacks: {len(all_attacks)}")
+            print(f"    Attacks Blocked: {attacks_blocked}/{len(all_attacks)} ({attacks_blocked/len(all_attacks)*100:.1f}%)")
+        
+        if all_legitimate:
+            print(f"\n  Legitimate Query Handling:")
+            print(f"    Total Legitimate: {len(all_legitimate)}")
+            print(f"    Legitimate Allowed: {legitimate_allowed}/{len(all_legitimate)} ({legitimate_allowed/len(all_legitimate)*100:.1f}%)")
+        
+        print(f"\n  Total Execution Time: {self.end_time - self.start_time:.2f}s")
         
         # Performance analysis
         durations = [r.duration for r in self.results if r.success]
@@ -313,9 +384,12 @@ class LoadTester:
             print(f"  Min/Max: {min(durations):.2f}s / {max(durations):.2f}s")
             
             fast = sum(1 for d in durations if d < 3)
-            slow = sum(1 for d in durations if d > 10)
-            print(f"  Fast requests (<3s): {fast}")
-            print(f"  Slow requests (>10s): {slow}")
+            medium = sum(1 for d in durations if 3 <= d < 10)
+            slow = sum(1 for d in durations if d >= 10)
+            print(f"  Response Distribution:")
+            print(f"    Fast (<3s): {fast} ({fast/len(durations)*100:.1f}%)")
+            print(f"    Medium (3-10s): {medium} ({medium/len(durations)*100:.1f}%)")
+            print(f"    Slow (>10s): {slow} ({slow/len(durations)*100:.1f}%)")
 
 
 async def main():
