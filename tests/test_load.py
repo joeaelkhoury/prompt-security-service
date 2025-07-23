@@ -1,5 +1,3 @@
-# tests/test_load.py
-
 import asyncio
 import aiohttp
 import time
