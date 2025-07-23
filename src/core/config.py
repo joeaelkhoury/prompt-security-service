@@ -1,4 +1,3 @@
-# src/core/config.py
 """Configuration management."""
 import os
 from dataclasses import dataclass
