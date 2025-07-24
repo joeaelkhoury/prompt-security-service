@@ -27,6 +27,8 @@
 
 <img width="1889" height="924" alt="image" src="https://github.com/user-attachments/assets/e4108c6a-0c42-4f28-a713-4267493b9478" />
 
+<img width="2272" height="1369" alt="image" src="https://github.com/user-attachments/assets/b6ba75d2-aa49-4cb9-828e-008acea317d5" />
+
 ## 🎯 Overview
 
 The Prompt Security Service is a comprehensive security solution that protects AI/LLM applications from various attack vectors including prompt injection, SQL injection, XSS, and data exfiltration attempts. Built with Domain-Driven Design principles, it provides real-time threat detection, user reputation tracking, and intelligent decision-making through a multi-agent system.
