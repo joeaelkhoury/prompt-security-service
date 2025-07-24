@@ -2,10 +2,13 @@
 import threading
 import os
 from typing import Dict, Any
+import redis
+import logging
 
 from src.core.config import Settings
 from src.infrastructure.repositories.memory import InMemoryPromptRepository, InMemoryUserProfileRepository
 from src.infrastructure.repositories.graph import NetworkXGraphRepository
+from src.infrastructure.repositories.redis_graph import RedisGraphRepository
 from src.infrastructure.llm.factory import LLMServiceFactory
 from src.application.services.sanitization.strategies import (
     SQLInjectionSanitizer, XSSSanitizer, ProfanitySanitizer,
@@ -45,40 +48,28 @@ class ServiceContainer:
             self.settings = settings
             self.request_count = 0
             
-            # Check if database is configured
-            database_url = settings.database_url or os.getenv("DATABASE_URL", "")
-            use_sql = "postgresql" in database_url
+            # Initialize repositories
+            print("Initializing repositories...")
+            self.prompt_repo = InMemoryPromptRepository()
+            self.user_repo = InMemoryUserProfileRepository()
             
-            if use_sql:
-                try:
-                    # Use SQL repositories
-                    from src.infrastructure.database.connection import DatabaseConnection
-                    from src.infrastructure.repositories.sql import SQLPromptRepository, SQLUserProfileRepository
-                    from src.infrastructure.repositories.redis_graph import RedisGraphRepository
-                    
-                    print(f"Using SQL repositories with database: {database_url}")
-                    self.db_connection = DatabaseConnection(settings)
-                    session = self.db_connection.get_session()
-                    self.prompt_repo = SQLPromptRepository(session)
-                    self.user_repo = SQLUserProfileRepository(session)
-                    
-                    # Use Redis graph if available
-                    if hasattr(self.db_connection, 'redis_client'):
-                        self.graph_repo = RedisGraphRepository(self.db_connection.redis_client)
-                    else:
-                        self.graph_repo = NetworkXGraphRepository()
-                except Exception as e:
-                    print(f"Failed to initialize SQL repositories: {e}")
-                    print("Falling back to in-memory repositories")
-                    # Fallback to in-memory
-                    self.prompt_repo = InMemoryPromptRepository()
-                    self.user_repo = InMemoryUserProfileRepository()
-                    self.graph_repo = NetworkXGraphRepository()
-            else:
-                # Use in-memory repositories
-                print("Using in-memory repositories")
-                self.prompt_repo = InMemoryPromptRepository()
-                self.user_repo = InMemoryUserProfileRepository()
+            # Try to use Redis for graph storage
+            try:
+                redis_client = redis.Redis(
+                    host='redis',  # Docker service name
+                    port=6379,
+                    db=0,
+                    decode_responses=False  # Important: keep as bytes
+                )
+                redis_client.ping()
+                print("Connected to Redis for graph persistence")
+                self.graph_repo = RedisGraphRepository(redis_client)
+                
+                # Ensure test data exists
+                self._ensure_test_data()
+                
+            except Exception as e:
+                print(f"Redis not available, using in-memory graph: {e}")
                 self.graph_repo = NetworkXGraphRepository()
             
             # Initialize LLM service
@@ -112,6 +103,69 @@ class ServiceContainer:
             )
             
             self.initialized = True
+    
+    def _ensure_test_data(self):
+        """Ensure test data exists in graph repository."""
+        try:
+            from src.domain.entities.graph import GraphNode, GraphEdge
+            from datetime import datetime
+            
+            # Check if test user exists by trying to get its subgraph
+            test_graph = self.graph_repo.get_subgraph("test_user_001", depth=0)
+            
+            # If graph is empty, add test data
+            if len(test_graph.nodes()) == 0:
+                print("Adding test data to graph repository...")
+                
+                # Add test user
+                test_user = GraphNode(
+                    id="test_user_001",
+                    node_type="user",
+                    data={"reputation": 0.85, "total_prompts": 5},
+                    created_at=datetime.utcnow()
+                )
+                self.graph_repo.add_node(test_user)
+                
+                # Add test prompts
+                for i in range(3):
+                    prompt = GraphNode(
+                        id=f"test_prompt_{i}",
+                        node_type="prompt",
+                        data={
+                            "content": f"Test prompt {i}",
+                            "status": "safe" if i < 2 else "blocked",
+                            "user_id": "test_user_001"
+                        },
+                        created_at=datetime.utcnow()
+                    )
+                    self.graph_repo.add_node(prompt)
+                    
+                    # Add edge from user to prompt
+                    edge = GraphEdge(
+                        source_id="test_user_001",
+                        target_id=f"test_prompt_{i}",
+                        edge_type="submitted",
+                        weight=1.0,
+                        metadata={"test": True}
+                    )
+                    self.graph_repo.add_edge(edge)
+                
+                # Add similarity edge between prompts
+                sim_edge = GraphEdge(
+                    source_id="test_prompt_0",
+                    target_id="test_prompt_1",
+                    edge_type="similar_to",
+                    weight=0.85,
+                    metadata={"similarity_score": 0.85}
+                )
+                self.graph_repo.add_edge(sim_edge)
+                
+                print("Test data added successfully")
+            else:
+                print(f"Test data already exists: {len(test_graph.nodes())} nodes found")
+                
+        except Exception as e:
+            print(f"Error ensuring test data: {e}")
     
     def _create_input_sanitizer(self) -> CompositeSanitizer:
         """
